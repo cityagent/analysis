@@ -15,7 +15,7 @@ class ExcelResultSaver:
 
         # 确定保存路径
         if self.file_path is None:
-            default_filename = f"分析结果_{pd.Timestamp.now().strftime('%Y%m%d')}"
+            default_filename = f"分析结果_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}"
             self.file_path = filedialog.asksaveasfilename(
                 title="选择保存路径（后续结果将追加到该文件）",
                 defaultextension=".xlsx",

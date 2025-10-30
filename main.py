@@ -1,14 +1,15 @@
 import tkinter as tk
 from tkinter import filedialog
+
 import pandas as pd
 from openpyxl import load_workbook
 
+from construction_analyzer import ConstructionAnalyzer
+from design_analyzer import DesignAnalyzer
 from excel_saver import ExcelResultSaver
 from leader_analyzer import LeaderFrequencyAnalyzer
 from loss_analyzer import LossDataAnalyzer
 from loss_over_analyzer import LossOverAnalyzer
-from design_analyzer import DesignAnalyzer
-from construction_analyzer import ConstructionAnalyzer
 
 
 class MainApp:
@@ -21,15 +22,22 @@ class MainApp:
         self.analyzers = []  # 分析器实例列表
         # 分析器配置（新增分析器只需添加此配置）
         self.analyzers_config = [
-            {
-                "class": LossDataAnalyzer,
-                "sheet_name": "附表5  成本费用异常情况",
-                "analyze_kwargs": {}
-            },
+
             {
                 "class": LeaderFrequencyAnalyzer,
                 "sheet_name": "附表1  亏损3个项目项目负责人",
                 "analyze_kwargs": {"min_count": 3}
+            },
+            {
+                "class": DesignAnalyzer,
+                "sheet_name": "附表2  亏损大于合同",
+                "analyze_kwargs": {}
+            },
+
+            {
+                "class": ConstructionAnalyzer,
+                "sheet_name": "附表3  施工项目亏损金额占合同金额30%",
+                "analyze_kwargs": {}
             },
             {
                 "class": LossOverAnalyzer,
@@ -37,13 +45,8 @@ class MainApp:
                 "analyze_kwargs": {"threshold": 1000}
             },
             {
-                "class": DesignAnalyzer,
-                "sheet_name": "附表2  亏损大于合同",
-                "analyze_kwargs": {}
-            },
-            {
-                "class": ConstructionAnalyzer,
-                "sheet_name": "附表3  施工项目亏损金额占合同金额30%",
+                "class": LossDataAnalyzer,
+                "sheet_name": "附表5  成本费用异常情况",
                 "analyze_kwargs": {}
             }
         ]
