@@ -399,29 +399,24 @@ async def upload_and_download_excel(file: UploadFile = File(..., description="�
         logger.error(f"发生未知错误：{str(e)}")
         raise HTTPException(status_code=500, detail=f"处理请求时发生未知错误: {str(e)}")
 
-class Analyzer(BaseModel):
-    analyzers: List[str]  # 假设每个项目包含多个异常点
-
+from fastapi import Body
 
 @app.post("/download_excel/", tags=["一站式API"])
-async def upload_and_download_excel(all_analyzed_data:list):
+async def upload_and_download_excel(all_analyzed_data: list = Body(...)):
     """
     【一站式】上传 Excel 文件，执行分析，并将结果保存为 Excel 文件并直接返回下载。
     """
     try:
         logger.info("开始上传并分析 Excel 文件...")
-        # 执行分析并获取所有分析的结果
-        # Use the new save method to save results to Excel
+
         file_path = analysis_api.save_results_to_excel_v2(all_analyzed_data)
 
-        # Ensure that the file exists before sending the response
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="生成的Excel文件未找到")
 
-        # Return the file as a response to the client
         return FileResponse(
-            file_path, 
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+            file_path,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             filename="分析报告.xlsx"
         )
 
