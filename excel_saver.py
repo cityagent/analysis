@@ -12,7 +12,6 @@ class ExcelResultSaver:
         """保存数据到Excel（支持多Sheet追加）"""
         if data is None or len(data) == 0:
             return False
-
         # 确定保存路径
         if self.file_path is None:
             default_filename = f"分析结果_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}"
@@ -90,41 +89,3 @@ class ExcelResultSaver:
         while f"{base_name}_{suffix}" in existing_sheets:
             suffix += 1
         return f"{base_name}_{suffix}"
-
-    # 新增一个方法用于 DataFrame 存储到 Sheet
-    def save_dataframe_to_sheet(self, df: pd.DataFrame, sheet_name: str):
-        """将 DataFrame 写入指定的 Sheet 中"""
-        try:
-            # 处理无效浮动值
-            df_cleaned = df.applymap(self.replace_invalid_floats)
-
-            file_exists = os.path.exists(self.file_path)
-            mode = "a" if file_exists else "w"
-
-            with pd.ExcelWriter(
-                self.file_path,
-                engine="openpyxl",
-                mode=mode,
-                if_sheet_exists="new" if file_exists else None
-            ) as writer:
-                df_cleaned.to_excel(
-                    writer,
-                    sheet_name=sheet_name,
-                    index=False,
-                    startrow=1
-                )
-                worksheet = writer.sheets[sheet_name]
-                worksheet["A1"] = f"数据说明：共{len(df_cleaned)}行"
-                worksheet["A1"].font = Font(bold=True)
-            
-            return True
-        except Exception as e:
-            print(f"写入 {sheet_name} 到 Excel 失败: {e}")
-            return False
-
-    def replace_invalid_floats(self, value):
-        """替换无效的 float 值（NaN, Infinity）"""
-        if isinstance(value, float):
-            if pd.isna(value) or value == float('inf') or value == float('-inf'):
-                return None  # 或者返回一个替代字符串 "NaN"
-        return value
