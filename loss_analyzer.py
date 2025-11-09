@@ -9,6 +9,8 @@ class LossDataAnalyzer(BaseAnalyzer):
     def __init__(self, original_columns):
         super().__init__(original_columns)
         self.valid_rows_count = 0  # 有效比较行数
+        self.low_loss_data = pd.DataFrame()  # ✅ 初始化存储低额亏损数据
+
 
     def analyze(self, df, parent=None, **kwargs):
         try:
@@ -71,6 +73,8 @@ class LossDataAnalyzer(BaseAnalyzer):
                          "技术费_数值", "分包费_数值"]
             )[self.original_columns]
             self._log(f"符合成本异常条件的数据：{len(self.analyzed_data)} 行")
+            # ✅ 在分析结束时调用低额亏损筛选
+            self.filter_low_loss(df_copy)
             return True
 
         except ValueError as ve:
@@ -86,3 +90,12 @@ class LossDataAnalyzer(BaseAnalyzer):
 
     def get_valid_rows_count(self):
         return self.valid_rows_count
+    
+    def filter_low_loss(self, df_copy):
+        """筛选亏损金额低于10万元的项目"""
+        self.low_loss_data = df_copy[df_copy["亏损金额_数值"] < 100000].dropna(subset=["亏损金额_数值"])
+        self._log(f"亏损金额低于10万元的项目数：{len(self.low_loss_data)} 行")
+
+    def get_low_loss_data(self):
+        """返回亏损金额小于10万的结果"""
+        return self.low_loss_data[self.original_columns]

@@ -119,6 +119,47 @@ class AnalysisAPI:
             logger.error(f"Excel 读取失败：{str(e)}")
             raise HTTPException(status_code=400, detail=f"Excel 读取失败：{str(e)}")
 
+    # def run_analysis(self):
+    #     """执行所有分析器"""
+    #     if self.raw_data is None or not self.analyzers:
+    #         raise HTTPException(status_code=400, detail="请先上传Excel文件！")
+
+    #     logger.info("开始执行数据分析...")
+        
+    #     # 汇总所有分析器的结果
+    #     all_analyzed_data = []
+
+    #     # 先执行所有分析器，汇总所有结果
+    #     for i, cfg in enumerate(self.analyzers_config):
+    #         analyzer = self.analyzers[i]
+    #         logger.info(f"开始执行分析器：{analyzer.__class__.__name__}")
+    #         success = analyzer.analyze(df=self.raw_data, **cfg["analyze_kwargs"])
+
+    #         if success:
+    #             analyzed_df = analyzer.get_analyzed_data()
+
+    #             # 清理特殊的 float 值（NaN, Infinity 等）
+    #             cleaned_df = analyzed_df.applymap(self.replace_invalid_floats)
+
+    #             # Convert datetime objects to string
+    #             cleaned_data = cleaned_df.to_dict(orient="records")
+    #             cleaned_data = convert_datetime_to_string(cleaned_data)  # Apply the conversion
+
+    #             # 汇总所有分析器的结果，并在每个结果中添加分析器名称
+    #             all_analyzed_data.append({
+    #                 "analyzer_name": analyzer.__class__.__name__,
+    #                 "sheet_name": cfg["sheet_name"],
+    #                 "status": "success",
+    #                 "data": cleaned_data,
+    #                 'analyzer':analyzer.__class__.__name__
+    #             })
+    #             logger.info(f"{analyzer.__class__.__name__} 分析完成，包含 {len(cleaned_df)} 条数据")
+    #         else:
+    #             logger.error(f"{analyzer.__class__.__name__} 分析失败或无结果")
+
+    #     logger.info("所有分析器执行完毕")
+    #     return all_analyzed_data
+
     def run_analysis(self):
         """执行所有分析器"""
         if self.raw_data is None or not self.analyzers:
@@ -126,10 +167,9 @@ class AnalysisAPI:
 
         logger.info("开始执行数据分析...")
         
-        # 汇总所有分析器的结果
         all_analyzed_data = []
+        low_loss_data = []  # ✅ 新增：用于返回前端的亏损<10万元数据
 
-        # 先执行所有分析器，汇总所有结果
         for i, cfg in enumerate(self.analyzers_config):
             analyzer = self.analyzers[i]
             logger.info(f"开始执行分析器：{analyzer.__class__.__name__}")
@@ -137,29 +177,38 @@ class AnalysisAPI:
 
             if success:
                 analyzed_df = analyzer.get_analyzed_data()
-
-                # 清理特殊的 float 值（NaN, Infinity 等）
                 cleaned_df = analyzed_df.applymap(self.replace_invalid_floats)
-
-                # Convert datetime objects to string
                 cleaned_data = cleaned_df.to_dict(orient="records")
-                cleaned_data = convert_datetime_to_string(cleaned_data)  # Apply the conversion
+                cleaned_data = convert_datetime_to_string(cleaned_data)
 
-                # 汇总所有分析器的结果，并在每个结果中添加分析器名称
+                # ✅ 如果是 LossDataAnalyzer，则额外收集亏损<10万元的数据
+                if isinstance(analyzer, LossDataAnalyzer):
+                    low_loss_df = analyzer.get_low_loss_data()
+                    if not low_loss_df.empty:
+                        low_loss_cleaned = low_loss_df.applymap(self.replace_invalid_floats)
+                        low_loss_cleaned_data = convert_datetime_to_string(
+                            low_loss_cleaned.to_dict(orient="records")
+                        )
+                        low_loss_data = low_loss_cleaned_data  # 保存到变量中
+
                 all_analyzed_data.append({
                     "analyzer_name": analyzer.__class__.__name__,
                     "sheet_name": cfg["sheet_name"],
                     "status": "success",
                     "data": cleaned_data,
-                    'analyzer':analyzer.__class__.__name__
+                    'analyzer': analyzer.__class__.__name__
                 })
                 logger.info(f"{analyzer.__class__.__name__} 分析完成，包含 {len(cleaned_df)} 条数据")
             else:
                 logger.error(f"{analyzer.__class__.__name__} 分析失败或无结果")
 
         logger.info("所有分析器执行完毕")
-        return all_analyzed_data
 
+        # ✅ 最终返回时增加一个字段 “low_loss_projects”
+        return {
+            "all_analyzed_data": all_analyzed_data,
+            "low_loss_projects": low_loss_data  # 直接返回给前端
+        }
 
     def classify_projects(self, all_analyzed_data):
         """根据每个项目的异常点数量进行分类"""
@@ -167,8 +216,9 @@ class AnalysisAPI:
             "one_exception": [],
             "two_exceptions": [],
             "more_than_two_exceptions": [],
+            "low_loss_projects":[],
             "all": [],
-            "source":[]
+            "source":[],
         }
 
         project_stats = {}
@@ -344,17 +394,24 @@ async def upload_and_analyze_json(file: UploadFile = File(..., description="要�
     【一站式】上传 Excel 文件，立即执行所有分析，并返回 JSON 格式的结果。
     """
     try:
-        logger.info("开始上传并分析 Excel 文件...")
         analysis_api.upload_excel(file)
         results = analysis_api.run_analysis()
-        results= analysis_api.classify_projects(results)
-        # 递归转换所有非JSON兼容的对象为字符串
-        results = convert_all_non_json_compliant_to_string(results)        
-        # 使用jsonable_encoder来确保所有数据都能正确转换
-        results = jsonable_encoder(results)
+        # 这里的 run_analysis() 现在返回 dict，包括：
+        # { "all_analyzed_data": [...], "low_loss_projects": [...] }
 
-        logger.info("文件上传并分析成功")
-        return JSONResponse(content=results)
+        all_analyzed_data = results["all_analyzed_data"]
+        low_loss_projects = results.get("low_loss_projects", [])
+
+        # 对主要分析数据执行分类统计
+        classified_results = analysis_api.classify_projects(all_analyzed_data)
+
+        # 把低额亏损项目附加进最终返回结果
+        classified_results["low_loss_projects"] = low_loss_projects
+
+        # 转换为可序列化结构
+        classified_results = convert_all_non_json_compliant_to_string(classified_results)
+        classified_results = jsonable_encoder(classified_results)
+        return JSONResponse(content=classified_results)
     except HTTPException as e:
         logger.error(f"HTTP 错误：{e.detail}")
         raise e
